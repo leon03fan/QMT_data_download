@@ -39,7 +39,10 @@ if __name__ == "__main__":
     # 创建QMT操作器
     obj_qmt_operator = QMTOperator(obj_qmt, obj_mysql_connect)
 
-    # 获取交易所信息
+    # 初始化并获取交易所信息
+    print("初始化交易所数据...")
+    obj_mysql_operator.init_exchange()
+    print("\n获取交易所信息...")
     df_exchange_info = obj_mysql_operator.get_exchange(instrument_category="FUTURE")
     
     # 获取期货数据

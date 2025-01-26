@@ -341,6 +341,51 @@ class MysqlOperator:
             print(f"更新合约日期失败: {str(e)}")
             return False
 
+    def init_exchange(self) -> bool:
+        """
+        初始化交易所数据，如果D_base_Exchange表为空则插入初始数据
+        
+        Returns:
+            bool: 操作是否成功
+        """
+        try:
+            # 检查是否有数据
+            check_query = "SELECT COUNT(*) as count FROM D_base_Exchange"
+            result = self.mysql_connect.query(check_query)
+            if result.iloc[0]['count'] > 0:
+                print("交易所数据已存在，无需初始化")
+                return True
+                
+            # 插入初始数据
+            insert_data = [
+                ("FUTURE", "DF", "DCE", "大商所"),
+                ("FUTURE", "GF", "GFEX", "广期所"),
+                ("FUTURE", "IF", "CFFEX", "中金所"),
+                ("FUTURE", "INE", "INE", "能源中心"),
+                ("FUTURE", "SF", "SHFE", "上期所"),
+                ("FUTURE", "ZF", "CZCE", "郑商所"),
+                ("STOCK", "SH", "SH", "上海交易所"),
+                ("STOCK", "SZ", "SZ", "深圳交易所")
+            ]
+            
+            insert_query = """
+                INSERT INTO D_base_Exchange 
+                (InstrumentCategory, XTExchangeID, ExchangeID, ExchangeCName) 
+                VALUES (%s, %s, %s, %s)
+            """
+            
+            for data in insert_data:
+                if not self.mysql_connect.execute(insert_query, data):
+                    print(f"插入数据失败: {data}")
+                    return False
+                    
+            print("交易所数据初始化成功")
+            return True
+            
+        except Exception as e:
+            print(f"初始化交易所数据失败: {str(e)}")
+            return False
+
 # 示例使用
 # if __name__ == "__main__":
 #     # 创建数据库连接
