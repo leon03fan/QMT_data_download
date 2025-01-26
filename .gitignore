@@ -1,0 +1,41 @@
+# 忽略API文档文件夹
+API DOC/
+[API DOC]/
+
+# 忽略数据文件夹
+data/
+[data]/
+
+# 忽略Bar文件夹内的内容，但保留文件夹
+barData/*
+!barData/.gitkeep
+[barData]/*
+![barData]/.gitkeep
+
+# 忽略配置文件
+QMT.ini
+config/QMT.ini
+
+# 忽略测试文件
+test.py
+
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 开发环境
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 日志文件
+*.log 
