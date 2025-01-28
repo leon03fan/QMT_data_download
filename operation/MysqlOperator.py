@@ -183,7 +183,7 @@ class MysqlOperator:
             print(f"更新/插入期货合约详情失败: {str(e)}")
             return False
 
-    def init_save_log(self, df_future_detail: pd.DataFrame) -> pd.DataFrame:
+    def init_save_log(self, df_future_detail: pd.DataFrame, str_instrument_category: str = "FUTURE") -> pd.DataFrame:
         """
         根据期货合约详细信息创建并保存日志到数据库
         
@@ -197,27 +197,28 @@ class MysqlOperator:
             # 初始化保存日志dataframe
             list_save_log = []
             for _, row in df_future_detail.iterrows():
-                # 处理连续合约
-                list_save_log.append({
-                    'InstrumentLongID': row['InstrumentLongID'],
-                    'InstrumentID': row['InstrumentLongID'].split('.')[0],
-                    'InstrumentCategory': row['InstrumentCategory'],
-                    'XTExchangeID': row['XTExchangeID'],
-                    'ExchangeID': row['ExchangeID'],
-                    'ExchangeCName': row['ExchangeCName'],
-                    'instrument_CName': row['ProductName']
-                })
-                
-                # # 处理加权连续合约
-                # list_save_log.append({
-                #     'InstrumentLongID': row['InstrumentJQLongID'],
-                #     'InstrumentID': row['InstrumentJQLongID'].split('.')[0],
-                #     'InstrumentCategory': row['InstrumentCategory'],
-                #     'XTExchangeID': row['XTExchangeID'],
-                #     'ExchangeID': row['ExchangeID'],
-                #     'ExchangeCName': row['ExchangeCName'],
-                #     'instrument_CName': row['ProductName']
-                # })
+                # 处理期货合约
+                if str_instrument_category == "FUTURE":
+                    list_save_log.append({
+                        'InstrumentLongID': row['InstrumentLongID'],
+                        'InstrumentID': row['InstrumentLongID'].split('.')[0],
+                        'InstrumentCategory': row['InstrumentCategory'],
+                        'XTExchangeID': row['XTExchangeID'],
+                        'ExchangeID': row['ExchangeID'],
+                        'ExchangeCName': row['ExchangeCName'],
+                        'instrument_CName': row['ProductName'] # 期货合约的品种名称
+                    })
+                # 处理股票合约
+                elif str_instrument_category == "STOCK":
+                    list_save_log.append({
+                        'InstrumentLongID': row['InstrumentLongID'],
+                        'InstrumentID': row['InstrumentLongID'].split('.')[0],
+                        'InstrumentCategory': row['InstrumentCategory'],
+                        'XTExchangeID': row['ExchangeID'],
+                        'ExchangeID': row['ExchangeID'],
+                        'ExchangeCName': row['ExchangeCName'],
+                        'instrument_CName': row['InstrumentName'] # 股票合约的股票名称
+                    })
             
             # 创建DataFrame
             df_save_log = pd.DataFrame(list_save_log)
@@ -364,8 +365,8 @@ class MysqlOperator:
                 ("FUTURE", "INE", "INE", "能源中心"),
                 ("FUTURE", "SF", "SHFE", "上期所"),
                 ("FUTURE", "ZF", "CZCE", "郑商所"),
-                ("STOCK", "SH", "SH", "上海交易所"),
-                ("STOCK", "SZ", "SZ", "深圳交易所")
+                ("STOCK", "SH", "SH", "上证A股"),
+                ("STOCK", "SZ", "SZ", "深证A股")
             ]
             
             insert_query = """

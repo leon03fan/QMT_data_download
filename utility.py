@@ -21,6 +21,12 @@ class utility:
         """
         try:
             print(f"\n开始处理文件: {str_file_path}")
+            
+            # 检查DataFrame是否为空
+            if df_new is None or df_new.empty:
+                print("警告：新的数据为空，不需要进行pkl添加操作")
+                return False
+                
             # 确保索引是字符串类型
             df_new.index = df_new.index.astype(str)
             print(f"新数据范围: {min(df_new.index)} 到 {max(df_new.index)}")

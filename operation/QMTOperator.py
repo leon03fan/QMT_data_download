@@ -7,6 +7,8 @@ from connect.MysqlConnect import MysqlConnect
 from operation.MysqlOperator import MysqlOperator
 from utility import utility
 import configparser
+import os
+from pickle import dump
 
 class QMTOperator:
     def __init__(self, qmt_connect: QMTConnect, mysql_connect: MysqlConnect):
@@ -20,13 +22,14 @@ class QMTOperator:
         self.qmt_connect = qmt_connect
         self.mysql_operator = MysqlOperator(mysql_connect)
         
-    def get_futures_detail(self, df_exchange_info: pd.DataFrame, list_continuous_futures: list) -> bool:
+    def get_instrument_detail(self, df_exchange_info: pd.DataFrame, list_instrumentID: list, str_InstrumentCategory: str) -> bool:
         """
         获取合约详细信息并保存到数据库
         
         Args:
             df_exchange_info: 交易所信息DataFrame
-            list_continuous_futures: 连续合约代码列表
+            list_instrumentID: 对于期货来说是连续合约代码列表 对于股票来说是股票代码
+            str_InstrumentCategory: 品种类型，"FUTURE"为期货，"STOCK"为股票
             
         Returns:
             bool: 操作是否成功
@@ -37,7 +40,7 @@ class QMTOperator:
             
             # 遍历连续合约获取详细信息
             print("获取合约详细信息...")
-            for str_future in list_continuous_futures:
+            for str_future in list_instrumentID:
                 dict_detail = xtdata.get_instrument_detail(str_future, True)
                 if dict_detail:
                     list_futures_detail.append({
@@ -86,9 +89,15 @@ class QMTOperator:
                 on='ExchangeID',
                 how='left'
             )
-            df_futures_merged["InstrumentLongID"] = df_futures_merged["InstrumentID"] + "." + df_futures_merged["XTExchangeID"] # 连续合约长代码
-            df_futures_merged["ExchangeLongCode"] = df_futures_merged["ExchangeCode"] + "." + df_futures_merged["XTExchangeID"] # 交易所产品长代码--主力合约
-            df_futures_merged["InstrumentJQLongID"] = df_futures_merged["InstrumentID"].str[:-2] + "JQ00." + df_futures_merged["XTExchangeID"] # 加权连续合约长代码
+            if str_InstrumentCategory == "FUTURE":
+                df_futures_merged["InstrumentLongID"] = df_futures_merged["InstrumentID"] + "." + df_futures_merged["XTExchangeID"] # 连续合约长代码
+                df_futures_merged["ExchangeLongCode"] = df_futures_merged["ExchangeCode"] + "." + df_futures_merged["XTExchangeID"] # 交易所产品长代码--主力合约
+                df_futures_merged["InstrumentJQLongID"] = df_futures_merged["InstrumentID"].str[:-2] + "JQ00." + df_futures_merged["XTExchangeID"] # 加权连续合约长代码
+            elif str_InstrumentCategory == "STOCK":
+                df_futures_merged["InstrumentLongID"] = df_futures_merged["InstrumentID"] + "." + df_futures_merged["XTExchangeID"] # 连续合约长代码
+                df_futures_merged["ExchangeLongCode"] = "" # 交易所产品长代码--主力合约
+                df_futures_merged["InstrumentJQLongID"] = "" # 加权连续合约长代码
+
             
             # 将合并后的数据保存到数据库
             print("开始保存合约详细信息数据到数据库...")
@@ -103,17 +112,21 @@ class QMTOperator:
             print(f"获取合约详细信息失败: {str(e)}")
             return None
 
-    def download_and_save_barData(self, df_save_log: pd.DataFrame):
+    def download_and_save_barData(self, df_save_log: pd.DataFrame, str_instrument_category: str = "FUTURE"):
         """
         下载并保存K线数据
         
         Args:
             df_save_log: 保存日志DataFrame
+            str_instrument_category: 品种类型，"FUTURE"为期货，"STOCK"为股票
         """
         # 读取配置文件
         config = configparser.ConfigParser()
         config.read('./config/app.ini')
-        str_data_save_path = config.get('path', 'data_save_path')
+        if str_instrument_category == "FUTURE":
+            str_data_save_path = config.get('path', 'future_data_path')
+        elif str_instrument_category == "STOCK":
+            str_data_save_path = config.get('path', 'stock_data_path')
         
         # 获取初始下载时间
         dt_init_begin = config.get('download', 'init_begin')
@@ -121,13 +134,22 @@ class QMTOperator:
         # dt_init_end = "20240301000001"
         
         # 记录总开始时间
-        list_interpreters = ["tick","1m","5m","15m","1h","1d"]
+        if str_instrument_category == "FUTURE":
+            list_interpreters = ["tick","1m","5m","15m","1h","1d"]
+            # list_interpreters = ["5m","15m","1h","1d"] # 测试用
+        elif str_instrument_category == "STOCK":
+            list_interpreters = ["1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
         time_total_start = time.time()
         cnt = 0
-
         for _, row in df_save_log.iterrows():
-            # 只处理螺纹钢相关合约
-            if not ("rb00" in row['InstrumentLongID'] or "rbJQ00" in row['InstrumentLongID']):
+            # 测试开关
+            # if cnt > 1:
+            #     break
+            # if row['InstrumentLongID'] != "ag00.SF":
+            #     continue
+
+            # 检查是否为指定品种
+            if row['InstrumentCategory'] != str_instrument_category:
                 continue
                 
             # 记录当前产品开始时间 用于计算当前产品耗时
@@ -155,17 +177,30 @@ class QMTOperator:
                 except Exception as e:
                     print(f"产品：{row['ExchangeCName']}-{row['instrument_CName']}-{row['InstrumentLongID']} {i}周期下载出错: {str(e)}")
                     continue
-                    
+                
             # 保存数据到本地barData目录下 样式为pkl文件
-            list_dividend_type = ["none","front","front_ratio"]
-            for i in list_interpreters:
-                for dividend_type in list_dividend_type:
-                    dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], period=i, dividend_type=dividend_type,
-                        start_time=dt_download_begin, end_time=dt_download_end,
-                        count=-1, fill_data=False)
-                    df_temp = dict_result[row['InstrumentLongID']]
-                    df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
-                    utility.append_to_pkl(df_temp, f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}.pkl")
+            # 期货数据没有前复权，所以只要直接叠加就可以。
+            if str_instrument_category == "FUTURE":
+                list_dividend_type = ["none"]
+                for i in list_interpreters:
+                    for dividend_type in list_dividend_type:
+                            dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], period=i, dividend_type=dividend_type,
+                                start_time=dt_download_begin, end_time=dt_download_end,
+                                count=-1, fill_data=False)
+                            df_temp = dict_result[row['InstrumentLongID']]
+                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
+                            utility.append_to_pkl(df_temp, f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}.pkl")
+            # 股票数据需要前复权，所以不能叠加，只能全部数据保存
+            elif str_instrument_category == "STOCK":
+                list_dividend_type = ["none","front_ratio"] # 前复权和等比前复权 这里为了节省空间 只保存等比前复权。 "front" 是前复权，"front_ratio" 是等比前复权。
+                for i in list_interpreters:
+                    for dividend_type in list_dividend_type:
+                            dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], period=i, dividend_type=dividend_type,
+                                start_time=dt_init_begin, end_time=dt_download_end,
+                                count=-1, fill_data=False)
+                            df_temp = dict_result[row['InstrumentLongID']]
+                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
+                            df_temp.to_pickle(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}.pkl")
                 
             # 保存记录到数据库
             self.mysql_operator.update_save_date(row['InstrumentLongID'], dt_init_begin, dt_download_end)
