@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import os
 from datetime import datetime, timezone, timedelta
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 class utility:
     """数据工具类，用于处理数据保存等操作"""
@@ -96,3 +98,22 @@ class utility:
             # 格式化为17位字符串
             return cn_time.strftime('%Y%m%d%H%M%S') + f'{int(timestamp_ms % 1000):03d}'
         return [timestamp_to_string_17(ts) for ts in timestamps]
+
+    def save_pyarrow(self, df, file_path):
+        """
+        创建新的parquet文件
+        :param df: 要保存的DataFrame
+        """
+        try:
+            # 将DataFrame转换为parquet并保存
+            df.to_parquet(
+                file_path,
+                engine='pyarrow',
+                compression='snappy',  # 使用snappy压缩
+                index=False  # 不保存索引
+            )
+            print(f"成功保存数据，行数: {len(df)}")
+            return True
+        except Exception as e:
+            print(f"保存数据失败: {str(e)}")
+            return False

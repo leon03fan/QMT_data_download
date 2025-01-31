@@ -9,6 +9,8 @@ from utility import utility
 import configparser
 import os
 from pickle import dump
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 class QMTOperator:
     def __init__(self, qmt_connect: QMTConnect, mysql_connect: MysqlConnect):
@@ -112,7 +114,7 @@ class QMTOperator:
             print(f"获取合约详细信息失败: {str(e)}")
             return None
 
-    def download_and_save_barData(self, df_save_log: pd.DataFrame, str_instrument_category: str = "FUTURE"):
+    def download_barData(self, df_save_log: pd.DataFrame, str_instrument_category: str = "FUTURE", dt_init_begin: str = None, dt_init_end: str = None):
         """
         下载并保存K线数据
         
@@ -123,20 +125,10 @@ class QMTOperator:
         # 读取配置文件
         config = configparser.ConfigParser()
         config.read('./config/app.ini')
-        if str_instrument_category == "FUTURE":
-            str_data_save_path = config.get('path', 'future_data_path')
-        elif str_instrument_category == "STOCK":
-            str_data_save_path = config.get('path', 'stock_data_path')
         
-        # 获取初始下载时间
-        dt_init_begin = config.get('download', 'init_begin')
-        dt_init_end = datetime.now().strftime('%Y%m%d%H%M%S')
-        # dt_init_end = "20240301000001"
-        
-        # 记录总开始时间
+        # 获取下载周期
         if str_instrument_category == "FUTURE":
             list_interpreters = ["tick","1m","5m","15m","1h","1d"]
-            # list_interpreters = ["5m","15m","1h","1d"] # 测试用
         elif str_instrument_category == "STOCK":
             list_interpreters = ["1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
         time_total_start = time.time()
@@ -156,7 +148,7 @@ class QMTOperator:
             time_product_start = time.time()
             
             # 获取当前产品开始结束时间
-            dt_download_begin, dt_download_end = self.mysql_operator.get_save_date(row['InstrumentLongID'])
+            dt_download_begin, dt_download_end, _, _ = self.mysql_operator.get_log_save_by_id(row['InstrumentLongID'])
             if dt_download_begin is None:
                 dt_download_begin = dt_init_begin
                 dt_download_end = dt_init_end
@@ -178,32 +170,8 @@ class QMTOperator:
                     print(f"产品：{row['ExchangeCName']}-{row['instrument_CName']}-{row['InstrumentLongID']} {i}周期下载出错: {str(e)}")
                     continue
                 
-            # 保存数据到本地barData目录下 样式为pkl文件
-            # 期货数据没有前复权，所以只要直接叠加就可以。
-            if str_instrument_category == "FUTURE":
-                list_dividend_type = ["none"]
-                for i in list_interpreters:
-                    for dividend_type in list_dividend_type:
-                            dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], period=i, dividend_type=dividend_type,
-                                start_time=dt_download_begin, end_time=dt_download_end,
-                                count=-1, fill_data=False)
-                            df_temp = dict_result[row['InstrumentLongID']]
-                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
-                            utility.append_to_pkl(df_temp, f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}.pkl")
-            # 股票数据需要前复权，所以不能叠加，只能全部数据保存
-            elif str_instrument_category == "STOCK":
-                list_dividend_type = ["none","front_ratio"] # 前复权和等比前复权 这里为了节省空间 只保存等比前复权。 "front" 是前复权，"front_ratio" 是等比前复权。
-                for i in list_interpreters:
-                    for dividend_type in list_dividend_type:
-                            dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], period=i, dividend_type=dividend_type,
-                                start_time=dt_init_begin, end_time=dt_download_end,
-                                count=-1, fill_data=False)
-                            df_temp = dict_result[row['InstrumentLongID']]
-                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
-                            df_temp.to_pickle(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}.pkl")
-                
             # 保存记录到数据库
-            self.mysql_operator.update_save_date(row['InstrumentLongID'], dt_init_begin, dt_download_end)
+            self.mysql_operator.update_log_save(row['InstrumentLongID'], dt_init_begin, dt_download_end, is_download = True)
             
             # 计算并显示当前产品总耗时
             time_product_elapsed = time.time() - time_product_start
@@ -213,3 +181,63 @@ class QMTOperator:
         # 计算并显示总耗时
         time_total_elapsed = time.time() - time_total_start
         print(f"\n所有数据下载完成，总耗时: {time_total_elapsed:.2f}秒")
+
+    def save_barData(self, str_instrument_category: str = "FUTURE"):
+        """
+        保存K线数据到本地pkl文件
+        """
+        # 读取配置文件
+        config = configparser.ConfigParser()
+        config.read('./config/app.ini')
+        if str_instrument_category == "FUTURE":
+            str_data_save_path = config.get('path', 'future_data_path')
+            list_dividend_type = ["none"] # 期货数据没有前复权，所以只要直接叠加就可以。
+            list_period = ["tick","1m","5m","15m","1h","1d"] # 期货数据下载的周期
+        elif str_instrument_category == "STOCK":
+            str_data_save_path = config.get('path', 'stock_data_path')
+            list_dividend_type = ["none","front_ratio"] # 前复权和等比前复权 这里为了节省空间 只保存等比前复权。 "front" 是前复权，"front_ratio" 是等比前复权。
+            list_period = ["1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
+            
+        df_log_save = self.mysql_operator.get_all_log_save(str_instrument_category)
+        cnt = 0
+        for _, row in df_log_save.iterrows():
+            try:
+                print(f"【开始保存产品】： {row['InstrumentLongID']} ")
+                if row["InstrumentLongID"] == "ag00.SF":
+                    continue
+                # if row["XTExchangeID"] == "SF":
+                #     continue
+
+                # 记录当前产品开始时间 用于计算当前产品耗时
+                time_product_start = time.time()
+                dt_save_begin = row['download_begin_datetime']
+                dt_save_end = row['download_end_datetime']
+            
+                for i in list_period:
+                    for dividend_type in list_dividend_type:
+                            # dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], 
+                            #                                         period=i, dividend_type=dividend_type,
+                            #                                         start_time=dt_save_begin, end_time=dt_save_end,
+                            #                                         count=-1, fill_data=False)
+                            dict_result = xtdata.get_local_data(field_list=[], stock_list=[row['InstrumentLongID']], period=i, 
+                                                                start_time=dt_save_begin, end_time=dt_save_end, count=-1,
+                                                                dividend_type='none', fill_data=False, data_dir="")
+                            df_temp = dict_result[row['InstrumentLongID']]
+                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
+                            df_temp = df_temp.sort_index()
+                            df_temp = df_temp[~df_temp.index.duplicated(keep='last')] # 将df_temp按照索引排序去重
+                            df_temp.to_pickle(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}-{dt_save_begin}-{dt_save_end}.pkl")
+                            # df_temp.to_parquet(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}-{dt_save_begin}-{dt_save_end}.parquet",
+                            #                    engine='pyarrow',
+                            #                    compression='snappy',  # 使用snappy压缩
+                            #                    index=True  # 保存索引
+                            #         )
+                
+                self.mysql_operator.update_log_save(row['InstrumentLongID'], dt_save_begin, dt_save_end, is_download = False)
+                # 计算并显示当前产品总耗时
+                time_product_elapsed = time.time() - time_product_start
+                cnt += 1
+                print(f"已保存 {cnt} 个产品，本产品总耗时: {time_product_elapsed:.2f}秒")
+            except Exception as e:
+                print(f"产品：{row['ExchangeCName']}-{row['instrument_CName']}-{row['InstrumentLongID']} 保存出错: {str(e)}")
+                continue

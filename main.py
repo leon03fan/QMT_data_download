@@ -34,6 +34,9 @@ if __name__ == "__main__":
     # 创建QMT操作器
     obj_qmt_operator = QMTOperator(obj_qmt, obj_mysql_connect)
 
+    # 读取配置文件
+    config = configparser.ConfigParser()
+
     # 初始化并获取交易所信息
     print("初始化交易所数据...")
     obj_mysql_operator.init_exchange()
@@ -65,8 +68,16 @@ if __name__ == "__main__":
     df_save_log = obj_mysql_operator.init_save_log(df_future_detail)
     
     # 下载数据
+    config.read('./config/app.ini')
+    dt_init_begin = config.get('download', 'init_begin')
+    dt_init_end = datetime.now().strftime('%Y%m%d%H%M%S')
+    # dt_init_end = "20240301000001"
     print("开始下载期货数据...")
-    obj_qmt_operator.download_and_save_barData(df_save_log, str_instrument_category="FUTURE")
+    # obj_qmt_operator.download_barData(df_save_log, str_instrument_category="FUTURE", dt_init_begin=dt_init_begin, dt_init_end=dt_init_end)
+    
+    # 保存数据
+    print("开始保存期货数据...")
+    obj_qmt_operator.save_barData(str_instrument_category="FUTURE")
     
     # 计算期货数据处理时间
     time_future_elapsed = time.time() - time_future_start
@@ -97,8 +108,15 @@ if __name__ == "__main__":
     df_save_log = obj_mysql_operator.init_save_log(df_stock_detail, str_instrument_category="STOCK")
 
     # 下载数据
+    config.read('./config/app.ini')
+    dt_init_begin = config.get('download', 'init_begin')
+    dt_init_end = datetime.now().strftime('%Y%m%d%H%M%S')
     print("开始下载股票数据...")
-    obj_qmt_operator.download_and_save_barData(df_save_log, str_instrument_category="STOCK")
+    obj_qmt_operator.download_barData(df_save_log, str_instrument_category="STOCK", dt_init_begin=dt_init_begin, dt_init_end=dt_init_end)
+    
+    # 保存数据
+    print("开始保存期货数据...")
+    obj_qmt_operator.save_barData(str_instrument_category="FUTSTOCKURE")
     
     # 计算股票数据处理时间
     time_stock_elapsed = time.time() - time_stock_start
@@ -108,7 +126,7 @@ if __name__ == "__main__":
     time_total_elapsed = time.time() - time_total_start
     print(f"\n所有数据处理完成，总耗时: {time_total_elapsed:.2f}秒")
     print(f"其中：")
-    print(f"期货数据处理耗时: {time_future_elapsed:.2f}秒")
+    # print(f"期货数据处理耗时: {time_future_elapsed:.2f}秒")
     print(f"股票数据处理耗时: {time_stock_elapsed:.2f}秒")
 
     # 断开数据库连接
