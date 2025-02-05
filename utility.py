@@ -99,6 +99,47 @@ class utility:
             return cn_time.strftime('%Y%m%d%H%M%S') + f'{int(timestamp_ms % 1000):03d}'
         return [timestamp_to_string_17(ts) for ts in timestamps]
 
+    @staticmethod
+    def batch_timestamp_to_datetime(timestamps):
+        """
+        批量将毫秒级时间戳转换为datetime格式（东八区时间，不带时区信息）
+        
+        Args:
+            timestamps: 毫秒级时间戳列表或Series
+            
+        Returns:
+            list: datetime格式的时间列表，精确到毫秒，不带时区信息
+            
+        示例:
+            输入: [1706688778123, 1706688779456]
+            输出: [datetime(2024, 1, 31, 21, 13, 18, 123000), datetime(2024, 1, 31, 21, 13, 19, 456000)]
+        """
+        def timestamp_to_datetime(timestamp_ms):
+            """
+            将单个毫秒级时间戳转换为datetime格式
+            """
+            # 分离秒和毫秒
+            seconds = timestamp_ms // 1000  # 整数秒
+            milliseconds = timestamp_ms % 1000  # 毫秒部分
+            
+            # 创建UTC时间
+            utc_time = datetime.fromtimestamp(seconds, timezone.utc)
+            # 转换为东八区
+            cn_timezone = timezone(timedelta(hours=8))
+            cn_time = utc_time.astimezone(cn_timezone)
+            # 创建不带时区的datetime，并添加毫秒
+            return datetime(
+                cn_time.year, cn_time.month, cn_time.day,
+                cn_time.hour, cn_time.minute, cn_time.second,
+                int(milliseconds * 1000)  # 转换为微秒
+            )
+            
+        # 处理pandas Series的情况
+        if hasattr(timestamps, 'values'):
+            timestamps = timestamps.values
+            
+        return [timestamp_to_datetime(int(ts)) for ts in timestamps]
+
     def save_pyarrow(self, df, file_path):
         """
         创建新的parquet文件

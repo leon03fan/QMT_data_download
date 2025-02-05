@@ -215,13 +215,13 @@ class QMTOperator:
             
                 for i in list_period:
                     for dividend_type in list_dividend_type:
-                            # dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], 
-                            #                                         period=i, dividend_type=dividend_type,
-                            #                                         start_time=dt_save_begin, end_time=dt_save_end,
-                            #                                         count=-1, fill_data=False)
-                            dict_result = xtdata.get_local_data(field_list=[], stock_list=[row['InstrumentLongID']], period=i, 
-                                                                start_time=dt_save_begin, end_time=dt_save_end, count=-1,
-                                                                dividend_type='none', fill_data=False, data_dir="")
+                            dict_result = xtdata.get_market_data_ex([], [row['InstrumentLongID']], 
+                                                                    period=i, dividend_type=dividend_type,
+                                                                    start_time=dt_save_begin, end_time=dt_save_end,
+                                                                    count=-1, fill_data=False)
+                            # dict_result = xtdata.get_local_data(field_list=[], stock_list=[row['InstrumentLongID']], period=i, 
+                            #                                     start_time=dt_save_begin, end_time=dt_save_end, count=-1,
+                            #                                     dividend_type='none', fill_data=False, data_dir="")
                             df_temp = dict_result[row['InstrumentLongID']]
                             df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
                             df_temp = df_temp.sort_index()
