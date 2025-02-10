@@ -287,16 +287,19 @@ class MysqlOperator:
         """
         try:
             query = """
-                SELECT download_begin_datetime, download_end_datetime, save_begin_datetime, save_end_datetime
+                SELECT init_datetime, download_begin_datetime, download_end_datetime, save_begin_datetime, save_end_datetime
                 FROM log_save
                 WHERE InstrumentLongID = %s
             """
+
             result = self.mysql_connect.query(query, (instrument_long_id,))
             
             if len(result) > 0:
-                return result.iloc[0]['download_begin_datetime'], result.iloc[0]['download_end_datetime'], result.iloc[0]['save_begin_datetime'], result.iloc[0]['save_end_datetime']
+                return result.iloc[0]['download_begin_datetime'], result.iloc[0]['download_end_datetime'], \
+                    result.iloc[0]['save_begin_datetime'], result.iloc[0]['save_end_datetime']
             else:
                 print(f"未找到合约记录: {instrument_long_id}")
+
                 return None, None, None, None
                 
         except Exception as e:
@@ -331,7 +334,7 @@ class MysqlOperator:
             
         return df_result
             
-    def update_log_save(self, instrument_long_id: str, begin_datetime: str, end_datetime: str, is_download: bool) -> bool:
+    def update_log_save_download(self, instrument_long_id: str, begin_datetime: str, end_datetime: str) -> bool:
         """
         更新log_save表中指定合约的开始和结束日期
         
@@ -339,43 +342,72 @@ class MysqlOperator:
             instrument_long_id: 合约长代码（主键）
             begin_datetime: 开始日期
             end_datetime: 结束日期
-            is_save: 是否保存
-            
         Returns:
             bool: 更新是否成功
         """
         try:
-            # 更新时间
-            if is_download:
+            query = """
+                SELECT init_datetime
+                FROM log_save
+                WHERE InstrumentLongID = %s
+            """
+            result = self.mysql_connect.query(query, (instrument_long_id,))
+            # 如果初始日期为空，则更新初始日期、下载日期 否则只更新下载日期
+            if result.iloc[0]['init_datetime'] is None:
+                update_query = """
+                    UPDATE log_save
+                    SET init_datetime = %s,
+                        download_begin_datetime = %s,
+                        download_end_datetime = %s
+                    WHERE InstrumentLongID = %s
+                """
+                params = (begin_datetime, begin_datetime, end_datetime, instrument_long_id)
+            else:
                 update_query = """
                     UPDATE log_save
                     SET download_begin_datetime = %s,
                         download_end_datetime = %s
                     WHERE InstrumentLongID = %s
                 """
-                str_info = "下载数据"
                 params = (begin_datetime, end_datetime, instrument_long_id)
-            else:
-                update_query = """
-                    UPDATE log_save
-                    SET save_begin_datetime = %s,
-                        save_end_datetime = %s
-                    WHERE InstrumentLongID = %s
-                """
-                str_info = "保存数据"
-                params = (begin_datetime, end_datetime, instrument_long_id)
-            
-            
-            if self.mysql_connect.execute(update_query, params):
-                print(f"【{str_info}】更新日期成功: {instrument_long_id}")
-                print(f"【{str_info}】数据范围: {begin_datetime} - {end_datetime}")
-                return True
-            else:
-                print(f"【{str_info}】更新日期失败: {instrument_long_id}")
-                return False
-                
+          
+            self.mysql_connect.execute(update_query, params)
+            print(f"【下载数据】更新日期成功: {instrument_long_id}")
+            print(f"【下载数据】数据范围: {begin_datetime} - {end_datetime}")
+            return True
         except Exception as e:
-            print(f"【{str_info}】更新日期失败: {str(e)}")
+            print(f"【下载数据】更新日期失败: {str(e)}")
+            return False
+        
+    def update_log_save_save(self, instrument_long_id: str, begin_datetime: str, end_datetime: str) -> bool:
+        """
+        更新log_save表中指定合约的开始和结束日期
+        
+        Args:
+            instrument_long_id: 合约长代码（主键）
+            begin_datetime: 开始日期
+            end_datetime: 结束日期
+            
+        Returns:
+            bool: 更新是否成功
+        """
+        try:
+            update_query = """
+                UPDATE log_save
+                SET save_begin_datetime = %s,
+                    save_end_datetime = %s,
+                    save_file_name = CONCAT(ExchangeCName, '-', instrument_CName, '-', InstrumentLongID)
+                WHERE InstrumentLongID = %s
+            """
+            params = (begin_datetime, end_datetime, instrument_long_id)
+        
+            if self.mysql_connect.execute(update_query, params):
+                print(f"【保存数据】更新日期成功: {instrument_long_id}")
+                print(f"【保存数据】数据范围: {begin_datetime} - {end_datetime}")
+                return True
+            return False
+        except Exception as e:
+            print(f"【保存数据】更新日期失败: {str(e)}")
             return False
 
     def init_exchange(self) -> bool:

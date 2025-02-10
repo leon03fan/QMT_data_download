@@ -130,16 +130,13 @@ class QMTOperator:
         if str_instrument_category == "FUTURE":
             list_interpreters = ["tick","1m","5m","15m","1h","1d"]
         elif str_instrument_category == "STOCK":
-            list_interpreters = ["1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
+            list_interpreters = ["tick","1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
         time_total_start = time.time()
         cnt = 0
         for _, row in df_save_log.iterrows():
             # 测试开关
             # if cnt > 1:
             #     break
-            # if row['InstrumentLongID'] != "ag00.SF":
-            #     continue
-
             # 检查是否为指定品种
             if row['InstrumentCategory'] != str_instrument_category:
                 continue
@@ -149,6 +146,10 @@ class QMTOperator:
             
             # 获取当前产品开始结束时间
             dt_download_begin, dt_download_end, _, _ = self.mysql_operator.get_log_save_by_id(row['InstrumentLongID'])
+
+            # if dt_download_end != "20240701000001":
+            #     continue
+
             if dt_download_begin is None:
                 dt_download_begin = dt_init_begin
                 dt_download_end = dt_init_end
@@ -161,6 +162,7 @@ class QMTOperator:
                 # 记录当前周期开始时间
                 time_period_start = time.time()
                 try:
+                    print(f"产品：{row['ExchangeCName']}-{row['instrument_CName']}-{row['InstrumentLongID']} {i}周期下载开始")
                     # 下载数据
                     xtdata.download_history_data(row['InstrumentLongID'], i, start_time=dt_download_begin, end_time=dt_download_end)
                     # 计算当前周期耗时
@@ -171,7 +173,7 @@ class QMTOperator:
                     continue
                 
             # 保存记录到数据库
-            self.mysql_operator.update_log_save(row['InstrumentLongID'], dt_init_begin, dt_download_end, is_download = True)
+            self.mysql_operator.update_log_save_download(row['InstrumentLongID'], dt_init_begin, dt_download_end)
             
             # 计算并显示当前产品总耗时
             time_product_elapsed = time.time() - time_product_start
@@ -196,20 +198,21 @@ class QMTOperator:
         elif str_instrument_category == "STOCK":
             str_data_save_path = config.get('path', 'stock_data_path')
             list_dividend_type = ["none","front_ratio"] # 前复权和等比前复权 这里为了节省空间 只保存等比前复权。 "front" 是前复权，"front_ratio" 是等比前复权。
-            list_period = ["1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
+            list_period = ["tick","1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
             
         df_log_save = self.mysql_operator.get_all_log_save(str_instrument_category)
         cnt = 0
         for _, row in df_log_save.iterrows():
+            # 测试开关
+            # if row["InstrumentLongID"] not in ["AP00.ZF", "CF00.ZF"]:
+            #     continue
             try:
                 print(f"【开始保存产品】： {row['InstrumentLongID']} ")
-                if row["InstrumentLongID"] == "ag00.SF":
-                    continue
-                # if row["XTExchangeID"] == "SF":
-                #     continue
+
 
                 # 记录当前产品开始时间 用于计算当前产品耗时
                 time_product_start = time.time()
+                # 如果save_end_datetime为None，则使用init_datetime，否则使用save_end_datetime 用于获得最新数据 添加保存
                 dt_save_begin = row['download_begin_datetime']
                 dt_save_end = row['download_end_datetime']
             
@@ -219,21 +222,20 @@ class QMTOperator:
                                                                     period=i, dividend_type=dividend_type,
                                                                     start_time=dt_save_begin, end_time=dt_save_end,
                                                                     count=-1, fill_data=False)
-                            # dict_result = xtdata.get_local_data(field_list=[], stock_list=[row['InstrumentLongID']], period=i, 
-                            #                                     start_time=dt_save_begin, end_time=dt_save_end, count=-1,
-                            #                                     dividend_type='none', fill_data=False, data_dir="")
                             df_temp = dict_result[row['InstrumentLongID']]
-                            df_temp.index = utility.batch_timestamp_to_string_17(df_temp["time"])
+                            df_temp.index = utility.batch_timestamp_to_datetime(df_temp["time"])
                             df_temp = df_temp.sort_index()
                             df_temp = df_temp[~df_temp.index.duplicated(keep='last')] # 将df_temp按照索引排序去重
-                            df_temp.to_pickle(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}-{dt_save_begin}-{dt_save_end}.pkl")
-                            # df_temp.to_parquet(f"{str_data_save_path}/{row['ExchangeCName']}-{dividend_type}-{row['instrument_CName']}-{row['InstrumentLongID']}-{i}-{dt_save_begin}-{dt_save_end}.parquet",
-                            #                    engine='pyarrow',
-                            #                    compression='snappy',  # 使用snappy压缩
-                            #                    index=True  # 保存索引
-                            #         )
+                            # 看是否有row['instrument_CName']-row['InstrumentLongID']目录，没有则创建，然后将df_temp保存到该目录下
+                            # str_dir_path = f"{str_data_save_path}/{row['instrument_CName']}-{row['InstrumentLongID']}"
+                            # if not os.path.exists(str_dir_path):
+                            #     os.makedirs(str_dir_path)
+                            str_dir_path = str_data_save_path
+                            str_file_name = f"{row['ExchangeCName']}-{row['instrument_CName']}-{row['InstrumentLongID']}-{dividend_type}-{i}.pkl"
+                            utility.append_to_pkl(df_temp,
+                                                  f"{str_dir_path}/{str_file_name}")
                 
-                self.mysql_operator.update_log_save(row['InstrumentLongID'], dt_save_begin, dt_save_end, is_download = False)
+                self.mysql_operator.update_log_save_save(row['InstrumentLongID'], dt_save_begin, dt_save_end)
                 # 计算并显示当前产品总耗时
                 time_product_elapsed = time.time() - time_product_start
                 cnt += 1
