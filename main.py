@@ -69,8 +69,9 @@ if __name__ == "__main__":
     
     # 下载数据
     config.read('./config/app.ini')
-    # dt_init_begin = config.get('download', 'init_begin')
-    dt_init_begin = '20240701000001'
+    dt_init_begin = config.get('download', 'init_begin')
+    # dt_init_end = "20240801000001"
+    # dt_init_end = "20250101000001"
     dt_init_end = datetime.now().strftime('%Y%m%d%H%M%S')
     print("开始下载期货数据...")
     obj_qmt_operator.download_barData(df_save_log, str_instrument_category="FUTURE", dt_init_begin=dt_init_begin, dt_init_end=dt_init_end)

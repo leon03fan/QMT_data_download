@@ -130,13 +130,13 @@ class QMTOperator:
         if str_instrument_category == "FUTURE":
             list_interpreters = ["tick","1m","5m","15m","1h","1d"]
         elif str_instrument_category == "STOCK":
-            list_interpreters = ["tick","1m","5m","15m","1h","1d"] # 为了节约时间 股票数据不下载tick数据
+            list_interpreters = ["tick","1m","5m","15m","1h","1d"]
         time_total_start = time.time()
         cnt = 0
         for _, row in df_save_log.iterrows():
             # 测试开关
-            # if cnt > 1:
-            #     break
+            # if  row["InstrumentLongID"] not in ["CF00.ZF"]: # ,"ag00.SF"
+            #     continue
             # 检查是否为指定品种
             if row['InstrumentCategory'] != str_instrument_category:
                 continue
@@ -146,9 +146,6 @@ class QMTOperator:
             
             # 获取当前产品开始结束时间
             dt_download_begin, dt_download_end, _, _ = self.mysql_operator.get_log_save_by_id(row['InstrumentLongID'])
-
-            # if dt_download_end != "20240701000001":
-            #     continue
 
             if dt_download_begin is None:
                 dt_download_begin = dt_init_begin
@@ -173,7 +170,7 @@ class QMTOperator:
                     continue
                 
             # 保存记录到数据库
-            self.mysql_operator.update_log_save_download(row['InstrumentLongID'], dt_init_begin, dt_download_end)
+            self.mysql_operator.update_log_save_download(row['InstrumentLongID'], dt_download_begin, dt_download_end)
             
             # 计算并显示当前产品总耗时
             time_product_elapsed = time.time() - time_product_start
@@ -203,12 +200,11 @@ class QMTOperator:
         df_log_save = self.mysql_operator.get_all_log_save(str_instrument_category)
         cnt = 0
         for _, row in df_log_save.iterrows():
-            # 测试开关
-            # if row["InstrumentLongID"] not in ["AP00.ZF", "CF00.ZF"]:
+            # if  row["InstrumentLongID"] not in ["CF00.ZF","ag00.SF"]:
             #     continue
+
             try:
                 print(f"【开始保存产品】： {row['InstrumentLongID']} ")
-
 
                 # 记录当前产品开始时间 用于计算当前产品耗时
                 time_product_start = time.time()
