@@ -12,6 +12,10 @@ barData/*
 [barData]/*
 ![barData]/.gitkeep
 
+# 忽略logs文件夹中的所有文件，但保留文件夹本身
+logs/*
+!logs/.gitkeep
+
 # 忽略配置文件
 QMT.ini
 config/QMT.ini

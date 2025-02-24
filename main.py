@@ -1,9 +1,11 @@
 import time
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from joblib import dump, load
 import configparser
+import time
+from datetime import datetime, timedelta
 
 from xtquant import xtdata
 from xtquant import xtdatacenter as xtdc
@@ -13,12 +15,13 @@ from connect.MysqlConnect import MysqlConnect
 from operation.MysqlOperator import MysqlOperator
 from operation.QMTOperator import QMTOperator
 from utility import utility
+from logPrintRedirector import logPrintRedirector
 
 import warnings
 warnings.filterwarnings("ignore")
 
 
-if __name__ == "__main__":
+def download_and_save():
     # 连接QMT
     obj_qmt = QMTConnect()
     if not obj_qmt.connect():
@@ -132,8 +135,42 @@ if __name__ == "__main__":
 
     # 断开数据库连接
     obj_mysql_connect.disconnect()
-       
 
-    
+if __name__ == "__main__":
+    # 每一个小时检查一次，当前是否是周五，并且是否晚于18:00 是则运行download_and_save()
+    print("程序启动，开始监控...")
+    while True:
+        try:
+            # 获取当前时间
+            current_time = datetime.now()
+            
+            # 检查是否是周五（weekday()返回0-6，其中0是周一，4是周五）
+            is_friday = current_time.weekday() == 4
+            # 检查是否晚于18:00
+            is_after_18 = current_time.hour >= 18
+            is_before_19 = current_time.hour <= 19
+            
+            # 如果是周五且晚于18:00，执行下载任务
+            if is_friday and is_after_18 and is_before_19:
+                print(f"\n当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                print("满足执行条件（周五且晚于18:00且早于19:00），开始执行数据下载任务...")
+                # 创建重定向器实例
+                redirector = logPrintRedirector()
+                with redirector.redirect_to_file():
+                    download_and_save()
+                print("数据下载任务执行完成，等待下一次检查...")
+            else:
+                print(f"\r当前时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')} - 等待执行条件（周五且晚于18:00 早于19:00）...")
+            
+            # 休眠到下一次检查时间
+            time.sleep(3600)
+            
+        except KeyboardInterrupt:
+            print("\n程序被用户中断")
+            break
+        except Exception as e:
+            print(f"\n发生错误: {str(e)}")
+            print("5分钟后重试...")
+            time.sleep(300)  # 等待5分钟后重试
 
 # 
